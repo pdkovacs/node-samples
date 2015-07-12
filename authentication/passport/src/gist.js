@@ -1,105 +1,114 @@
-var restify = require('restify');
+// Based on yoitsro / gist:8693021 (https://gist.github.com/yoitsro/8693021) &
+// https://github.com/jaredhanson/passport-local/pull/55
 
-// Authentication
-var passport        = require('passport');
-var LocalStrategy   = require('passport-local').Strategy;
-var sessions        = require("client-sessions");
+(function() {
+    "use strict";
 
-var server = restify.createServer();
-server.use(restify.queryParser());
-server.use(restify.bodyParser());
+    var restify = require("restify");
 
-server.use(sessions({
-    // cookie name dictates the key name added to the request object
-    cookieName: 'session',
-    // should be a large unguessable string
-    secret: 'yoursecret',
-    // how long the session will stay valid in ms
-    duration: 365 * 24 * 60 * 60 * 1000    
-}));
+    // Authentication
+    var passport        = require("passport");
+    var LocalStrategy   = require("passport-local").Strategy;
+    var sessions        = require("client-sessions");
 
-// Initialize passport
-server.use(passport.initialize()); 
-// Set up the passport session
-server.use(passport.session());
+    var server = restify.createServer();
+    server.use(restify.queryParser());
+    // This following option makes restify body parsing compatible with Connect (expected by passport):
+    var bodyParserOption = {mapParams: false};
+    server.use(restify.bodyParser(bodyParserOption));
 
-// This is how a user gets serialized
-passport.serializeUser(function(user, done) {
-    done(null, user.id);
-});
+    server.use(sessions({
+        // cookie name dictates the key name added to the request object
+        cookieName: "session",
+        // should be a large unguessable string
+        secret: "yoursecret",
+        // how long the session will stay valid in ms
+        duration: 365 * 24 * 60 * 60 * 1000
+    }));
 
-// This is how a user gets deserialized
-passport.deserializeUser(function(id, done) {
-    // Look the user up in the database and return the user object
-    // For this demo, return a static user
-    return done(null, {id:123456, username:'john'});
-});
+    // Initialize passport
+    server.use(passport.initialize());
+    // Set up the passport session
+    server.use(passport.session());
 
-// Lookup a user in our database
-var lookupUser = function(username, password, done) {
-    if(username === 'john' && password === 'johnspassword') {
-        return done(null, {id:123456, username:'john'});
-    }
+    // This is how a user gets serialized
+    passport.serializeUser(function(user, done) {
+        done(null, user.id);
+    });
 
-    return done(null, false, { error: 'Incorrect username or password.' });
-};
+    // This is how a user gets deserialized
+    passport.deserializeUser(function(id, done) {
+        // Look the user up in the database and return the user object
+        // For this demo, return a static user
+        return done(null, {id: 123456, username: "john"});
+    });
 
-passport.use(new LocalStrategy({ usernameField: 'username', session: true }, lookupUser));
-
-
-// POST /login
-var loginRoute = function(req, res, next) {
-    // The local login strategy
-    passport.authenticate('local', function(err, user) {
-        if (err) {
-            return next(err);
+    // Lookup a user in our database
+    var lookupUser = function(username, password, done) {
+        if(username === "john" && password === "johnspassword") {
+            return done(null, {id: 123456, username: "john"});
         }
 
-        // Technically, the user should exist at this point, but if not, check
-        if(!user) {
-            return next(new restify.InvalidCredentialsError("Please check your details and try again."));
-        }
+        return done(null, false, { error: "Incorrect username or password." });
+    };
 
-        // Log the user in!
-        req.logIn(user, function(err) {
-            if (err) { 
+    passport.use(new LocalStrategy(lookupUser));
+
+
+    // POST /login
+    var loginRoute = function(req, res, next) {
+        // The local login strategy
+        passport.authenticate("local", function(err, user) {
+            if (err) {
                 return next(err);
             }
-            console.log(req.isAuthenticated());
-            req.session.user_id = req.user.id;
 
-            if(user.username) {
-                res.json({ success: 'Welcome ' + user.username + "!"});
-                return next();
+            // Technically, the user should exist at this point, but if not, check
+            if(!user) {
+                return next(new restify.InvalidCredentialsError("Please check your details and try again."));
             }
 
-            res.json({ success: 'Welcome!'});
-            return next();
-        });
+            // Log the user in!
+            req.logIn(user, function(loginError) {
+                if (loginError) {
+                    return next(loginError);
+                }
+                console.log(req.isAuthenticated());
+                req.session.user_id = req.user.id;
 
-    })(req, res, next);
-};
+                if(user.username) {
+                    res.json({ success: "Welcome " + user.username + "!"});
+                    return next();
+                }
 
+                res.json({ success: "Welcome!"});
+                return next();
+            });
 
-
-// GET /hello
-var helloRoute =function(req, res, next) {
-    console.log(req.isAuthenticated());
-    if(req.user) {
-        res.send("Hello " + req.user.username);
-    } else {
-        res.send("Hello unauthenticated user");
-    }
- 
-    return next();
-};
-
+        })(req, res, next);
+    };
 
 
-server.post({url:'/login'}, loginRoute);
-server.get({url:'/hello'}, helloRoute);
 
-// Launch the server
-server.listen(5000, function() {
-    console.log('Server running at port 5000');
-});
+    // GET /hello
+    var helloRoute = function(req, res, next) {
+        if(req.user) {
+            res.send("Hello " + req.user.username);
+        } else {
+            res.send("Hello unauthenticated user");
+        }
+
+        return next();
+    };
+
+
+
+    server.post({url: "/login"}, loginRoute);
+    server.get({url: "/hello"}, helloRoute);
+
+    // Launch the server
+    server.listen(5000, function() {
+        console.log("Server running at port 5000");
+    });
+
+})();
