@@ -1,0 +1,9 @@
+{
+  "name": "node-samples-authentication-passport",
+  "version": "0.0.1",
+  "dependencies": {
+    "client-sessions": "^0.7.0",
+    "passport": "^0.2.2",
+    "passport-local": "^1.0.0"
+  }
+}
